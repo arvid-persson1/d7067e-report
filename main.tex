@@ -7,6 +7,7 @@
 \newtheorem{theorem}{Theorem}
 
 \usepackage[style=numeric]{biblatex}
+\usepackage{graphicx}
 \addbibresource{references.bib}
 
 \title{History Independent Dynamic Partitioning}
@@ -84,8 +85,29 @@ B-tree balancing is entirely defined by maintaining a dynamic partitioning at ea
 
 \section{History independent dynamic partitioning}
 
-TODO
+\subsection{Static $B/\alpha$ partitioning}
 
+The paper starts by defining a static partitioning algorithm $B/\alpha$ partitioning to sort a sorted set $S$ into groups of sizes between $B/\alpha$ and $B$ where $B$ is the maximum group size and $\alpha$ is the tightness of the group. The general ``strategy'' (``Protect the flanks'', as referred to by the paper \cite{HIDP}) can be divided into three main steps:
+\begin{enumerate}
+    \item Divide the left/right-most endpoints of the sorted list $S$ into protected groups of size $(B/\alpha)$.
+    \item Using a hash function, compute the minimum hash of the values in the unprotected middle region.
+    \item Pivot the min(hash) value and recurse until the resulting endpoints are no larger than $B$.
+\end{enumerate}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\linewidth]{images/pct.png}
+    \caption{``Protect the flanks'' as shown by the paper where $B = 8$ and $\alpha = 2$. \cite{HIDP}}
+    \label{fig:pct}
+\end{figure}
+
+\subsection{Protected Cartesian Tree (PCT) representation}
+
+To allow for insertions/deletions whilst keeping the structure canonical the structure is represented as a \emph{Cartesian Tree}. This works exceptionally well due to the properties of a cartesian tree since they are built from an inorder sequence of values by rank along with a priority for every element (interpreted into the hash values of the static partition). \emph{Protected cartesian trees} is a term coined by the paper which enforces the protected group sizes $B/\alpha$ and stops the algorithm from picking a pivot from these groups.
+
+\subsection{Measured Expected Costs}
+
+The paper uses \emph{element-movement cost} and \emph{group-update cost} to show the cost of moving and reconstructing the tree.
 \begin{definition}
     The \textbf{element-movement cost} of a dynamic partitioning is the number of elements that move from one group to another as part of an insertion or deletion, amortized. The theoretically optimal element-movement cost is $O(1)$~\cite{HIDP}.
 \end{definition}
@@ -94,15 +116,51 @@ TODO
     The \textbf{group-update cost} of a dynamic partitioning is the number of group boundaries that move as part of an insertion or deletion, amortized. The theoretically optimal group-update cost is $O(\frac{1}{B})$~\cite{HIDP}.
 \end{definition}
 
-TODO
-
-A practical HI B-tree should make it impossible to insert an element to trigger an expensive split, then remove that element to trigger an expensive merge, and repeat. The typical approach to preventing this kind of attack is to overallocate, creating new capacity only the first time that element is inserted and keeping it for later usage even if the element is deleted. This, however, could not possibly be HI.
-
-TODO
+A practical HI B-tree should make it difficult or ideally infeasible to insert an element to trigger an expensive split, then remove that element to trigger an expensive merge, and repeat. The typical approach to preventing this kind of attack is to overallocate, creating new capacity only the first time that element is inserted and keeping it for later usage even if the element is deleted. This, however, could not possibly be HI. In the PCT representation, for an insertion/deletion to cause a larger split, the inserted/deleted value has to coincidentally be the pivot. The randomized hash function will, however, be effective at combating adversarial operations since the user wouldn't know their inputs hash value making the probability of a split $(\frac{1}{B})$.
 
 \section{History independent B-tree}
 
-TODO
+Although we now have a HI Dynamic Partition, we would like to apply this to more commonly used data structures, namely a B-Tree. The way the paper constructs HI B-trees is by building it from the leaf level $T_{S0}$ and up.
+\begin{enumerate}
+    \item Start by applying the ``Protect the Flank'' strategy to the sorted set $S_0$ as normal where the protected groups become leaf nodes. The pivots are determined using \textbf{independent} hash functions $h_i$.
+    \item The pivots become part of the next set $S_1$ where we apply the same strategy to the next level $T_{S1}$
+    \item Repeat until the last pivot set $S_i$ is smaller or equal to the max group size $B$.
+\end{enumerate}
+
+\subsection{Insertions}
+
+When a key is inserted into the HI B-tree;
+\begin{itemize}
+    \item The key is inserted into the correct position at the leaf level.
+    \item If the leaf nodes size becomes larger than $B$ elements, the boundaries get re-calculated canonically using the hash independent hash function $h_0$.
+    \item In case pivots get changed, the changes will continue upwards in the tree.
+\end{itemize}
+
+\subsection{Deletions}
+
+Deletions work similarly but inversed;
+\begin{itemize}
+    \item When a key is removed and the node size becomes smaller than $B/\alpha$, the pivots get re-calculated and new groups are determined canonically because of the pivot selection rules.
+    \item If a deleted key was a pivot, we promote the next smallest hash from the same unprotected region.
+\end{itemize}
+
+\subsection{HI B-tree Complexity}
+
+The cost of insertions and deletions in HI B-trees can be divided into two types: 
+\emph{expected cost}, and \emph{high probability cost}, which bounds the cost in most cases except extremely rare events.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lcc}
+	\hline
+        \textbf{Cost Type}     & \textbf{Expected}                  & \textbf{With high probability}               \\ \hline
+	Search cost (I/O)      & $O(\log_B n)$                      & $O(\log_B n)$                                \\
+	Update cost (I/O)      & $O\left(\frac{\log_B n}{B}\right)$ & $O\left(\frac{\log n}{\log \log B}\right)$   \\
+	Element movement       & $O(1)$                             & $O\left(B \frac{\log n}{\log \log n}\right)$ \\
+	Group boundary updates & $O\left(\frac{1}{B}\right)$        & $O\left(\frac{\log n}{\log \log n}\right)$   \\ \hline
+    \end{tabular}
+    \caption{Expected and high probability costs in HI B-trees.}
+\end{table}
 
 \printbibliography
 
